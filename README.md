@@ -35,7 +35,7 @@ Features
     -   Stored user data, including weight entries and goal weight, in an SQLite database.
     -   Limited functionality for managing individual records (e.g., no edit or delete).
 
-### **Enhancements (Enhancement One)**
+### **Enhancement One)**
 
 The following enhancements were implemented to improve usability, interactivity, and security:
 
