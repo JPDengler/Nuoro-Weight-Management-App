@@ -21,6 +21,12 @@
     <string name="cd_login">Login button</string>
     <string name="cd_create_account">Create Account button</string>
     <string name="cd_request_sms">Request SMS Permission button</string>
+    <string-array name="sort_options">
+        <item>Sort by Date (Ascending)</item>
+        <item>Sort by Date (Descending)</item>
+        <item>Sort by Weight (Ascending)</item>
+        <item>Sort by Weight (Descending)</item>
+    </string-array>
     <string name="lorem_ipsum">
         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam in scelerisque sem. Mauris
         volutpat, dolor id interdum ullamcorper, risus dolor egestas lectus, sit amet mattis purus

@@ -1,27 +1,22 @@
 package com.example.project2;
 
-import android.view.View;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.TextView;
-import android.widget.Toast;
-import android.content.Intent;
-
+import android.view.View;
+import android.widget.*;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.github.mikephil.charting.charts.LineChart;
-import com.github.mikephil.charting.components.Description;
 import com.github.mikephil.charting.components.LimitLine;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
-
+import com.github.mikephil.charting.formatter.ValueFormatter;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -32,10 +27,12 @@ public class DataDisplayActivity extends AppCompatActivity {
 
     private LineChart lineChart;
     private EditText editTextDate, editTextWeight;
-    private Button btnSetGoalWeight, addDataButton, clearDataButton;
+    private Button btnSetGoalWeight, addDataButton, clearDataButton, btnSearch, btnSort;
+    private Spinner sortSpinner;
     private RecyclerView recyclerView;
     private DatabaseHelper dbHelper;
     private WeightAdapter adapter;
+    private String currentSortOrder = "date_asc"; // Default sorting order
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,136 +46,112 @@ public class DataDisplayActivity extends AppCompatActivity {
         btnSetGoalWeight = findViewById(R.id.btn_set_goal_weight);
         addDataButton = findViewById(R.id.add_data_button);
         clearDataButton = findViewById(R.id.btn_clear_data);
+        btnSearch = findViewById(R.id.btn_search);
+        btnSort = findViewById(R.id.btn_sort);
+        sortSpinner = findViewById(R.id.sortSpinner);
         recyclerView = findViewById(R.id.recyclerView);
 
         dbHelper = new DatabaseHelper(this);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        // Ensure scrolling is enabled
+        recyclerView.setNestedScrollingEnabled(true);
+
         // Initialize RecyclerView Adapter with Edit and Delete handlers
         adapter = new WeightAdapter(new ArrayList<>(),
-                this::showEditDialog, // Edit Action
-                this::confirmAndDeleteEntry // Delete Action
+                this::showEditDialog,
+                this::confirmAndDeleteEntry
         );
         recyclerView.setAdapter(adapter);
 
-        // Load weight data and update chart initially
+        // Load weight data
         loadWeightData();
 
-        // Add Data button logic
-        addDataButton.setOnClickListener(v -> {
-            String date = editTextDate.getText().toString().trim();
-            String weightStr = editTextWeight.getText().toString().trim();
+        // Button Listeners
+        addDataButton.setOnClickListener(v -> addWeightData());
+        clearDataButton.setOnClickListener(v -> confirmClearData());
+        btnSetGoalWeight.setOnClickListener(v -> showSetGoalWeightDialog());
+        btnSearch.setOnClickListener(v -> showSearchDialog());
+        btnSort.setOnClickListener(v -> {
+            String selectedSort = sortSpinner.getSelectedItem().toString();
 
-            if (TextUtils.isEmpty(date) || TextUtils.isEmpty(weightStr)) {
-                showToast("Please fill in both date and weight.");
-                return;
+            switch (selectedSort) {
+                case "Sort by Date (Ascending)":
+                    currentSortOrder = "date_asc";
+                    break;
+                case "Sort by Date (Descending)":
+                    currentSortOrder = "date_desc";
+                    break;
+                case "Sort by Weight (Ascending)":
+                    currentSortOrder = "weight_asc";
+                    break;
+                case "Sort by Weight (Descending)":
+                    currentSortOrder = "weight_desc";
+                    break;
+                default:
+                    currentSortOrder = "date_asc"; // Fallback to default sorting
+                    break;
             }
 
-            // Validate date format (MM/DD/YY)
-            if (!date.matches("^\\d{1,2}/\\d{1,2}/\\d{2}$")) {
-                showToast("Invalid date format. Use MM/DD/YY.");
-                return;
-            }
-
-            try {
-                double weight = Double.parseDouble(weightStr);
-                if (weight <= 0 || weight > 1000) {
-                    showToast("Please enter a realistic weight value.");
-                    return;
-                }
-                dbHelper.insertData(date, weight); // Save to DB
-                loadWeightData(); // Refresh RecyclerView and chart
-                showToast("Data added successfully!");
-                editTextDate.setText("");
-                editTextWeight.setText("");
-            } catch (NumberFormatException e) {
-                showToast("Invalid weight value.");
-            }
+            loadWeightData(); // Refresh data with new sorting
         });
+    }
 
-        // Clear Data button logic
-        clearDataButton.setOnClickListener(v -> new AlertDialog.Builder(this)
+    private void loadWeightData() {
+        List<DatabaseHelper.WeightEntry> weightEntries = dbHelper.getAllData(currentSortOrder);
+        adapter.updateData(weightEntries);
+        updateChart(weightEntries);
+
+        double goalWeight = dbHelper.getGoalWeight();
+        TextView goalWeightText = findViewById(R.id.goalWeightText);
+        goalWeightText.setText(goalWeight > 0 ? "Goal Weight: " + goalWeight + " lbs" : "Goal Weight: Not Set");
+    }
+
+    private void addWeightData() {
+        String date = editTextDate.getText().toString().trim();
+        String weightStr = editTextWeight.getText().toString().trim();
+
+        if (TextUtils.isEmpty(date) || TextUtils.isEmpty(weightStr)) {
+            showToast("Please fill in both date and weight.");
+            return;
+        }
+
+        if (!date.matches("^\\d{1,2}/\\d{1,2}/\\d{2}$")) {
+            showToast("Invalid date format. Use MM/DD/YY.");
+            return;
+        }
+
+        try {
+            double weight = Double.parseDouble(weightStr);
+            if (weight < 1 || weight > 500) {
+                showToast("Please enter a realistic weight value (1-500 lbs).");
+                return;
+            }
+            dbHelper.insertData(date, weight);
+            loadWeightData();
+            showToast("Data added successfully!");
+            editTextDate.setText("");
+            editTextWeight.setText("");
+        } catch (NumberFormatException e) {
+            showToast("Invalid weight value.");
+        }
+    }
+
+    private void confirmClearData() {
+        new AlertDialog.Builder(this)
                 .setTitle("Confirm Clear Data")
                 .setMessage("Are you sure you want to clear all your data? This action cannot be undone.")
                 .setPositiveButton("Yes", (dialog, which) -> {
                     boolean isCleared = dbHelper.clearUserData();
                     if (isCleared) {
                         showToast("All data cleared!");
-                        loadWeightData(); // Refresh RecyclerView and chart
+                        loadWeightData();
                     } else {
                         showToast("Failed to clear data.");
                     }
                 })
                 .setNegativeButton("No", null)
-                .show());
-
-        // Set Goal Weight button logic
-        btnSetGoalWeight.setOnClickListener(v -> showSetGoalWeightDialog());
-    }
-
-    private void loadWeightData() {
-        List<DatabaseHelper.WeightEntry> weightEntries = dbHelper.getAllData();
-        adapter.updateData(weightEntries); // Update RecyclerView
-        updateChart(weightEntries); // Update Chart
-
-        // Display goal weight
-        double goalWeight = dbHelper.getGoalWeight();
-        TextView goalWeightText = findViewById(R.id.goalWeightText);
-        if (goalWeight > 0) {
-            goalWeightText.setText("Goal Weight: " + goalWeight + " lbs");
-        } else {
-            goalWeightText.setText("Goal Weight: Not Set");
-        }
-    }
-
-    private void updateChart(List<DatabaseHelper.WeightEntry> weightEntries) {
-        List<Entry> entries = new ArrayList<>();
-        SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy");
-
-        for (DatabaseHelper.WeightEntry entry : weightEntries) {
-            try {
-                if (entry.getDate() == null || entry.getDate().isEmpty()) continue;
-                Date date = sdf.parse(entry.getDate());
-                entries.add(new Entry(date.getTime(), (float) entry.getWeight()));
-            } catch (ParseException e) {
-                e.printStackTrace();
-            }
-        }
-
-        LineDataSet dataSet = new LineDataSet(entries, "Weight Over Time");
-        dataSet.setColor(getResources().getColor(R.color.teal_200));
-        dataSet.setValueTextColor(getResources().getColor(R.color.black));
-
-        LineData lineData = new LineData(dataSet);
-        lineChart.setData(lineData);
-
-        // Add Goal Weight Marker
-        double goalWeight = dbHelper.getGoalWeight();
-        if (goalWeight > 0) {
-            LimitLine goalLine = new LimitLine((float) goalWeight, "Goal Weight");
-            goalLine.setLineWidth(2f);
-            goalLine.setTextSize(12f);
-            lineChart.getAxisLeft().addLimitLine(goalLine);
-        }
-
-        // Configure X-Axis
-        XAxis xAxis = lineChart.getXAxis();
-        xAxis.setValueFormatter(new com.github.mikephil.charting.formatter.ValueFormatter() {
-            private final SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy");
-
-            @Override
-            public String getFormattedValue(float value) {
-                long timestamp = (long) value; // Convert float to long
-                Date date = new Date(timestamp);
-                return sdf.format(date);
-            }
-        });
-        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-
-        Description description = new Description();
-        description.setText("Weight Progress");
-        lineChart.setDescription(description);
-        lineChart.invalidate(); // Refresh the chart
+                .show();
     }
 
     private void showSetGoalWeightDialog() {
@@ -192,10 +165,14 @@ public class DataDisplayActivity extends AppCompatActivity {
         builder.setPositiveButton("Save", (dialog, which) -> {
             String goalWeightStr = input.getText().toString();
             if (!goalWeightStr.isEmpty()) {
-                double goalWeight = Double.parseDouble(goalWeightStr);
-                dbHelper.setGoalWeight(goalWeight);
-                loadWeightData();
-                showToast("Goal Weight Set Successfully!");
+                try {
+                    double goalWeight = Double.parseDouble(goalWeightStr);
+                    dbHelper.setGoalWeight(goalWeight);
+                    loadWeightData(); // Refresh UI
+                    showToast("Goal Weight Set Successfully!");
+                } catch (NumberFormatException e) {
+                    showToast("Invalid Goal Weight.");
+                }
             } else {
                 showToast("Invalid Goal Weight.");
             }
@@ -205,11 +182,108 @@ public class DataDisplayActivity extends AppCompatActivity {
         builder.show();
     }
 
+    private void showSearchDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Search Entries");
+
+        View view = getLayoutInflater().inflate(R.layout.dialog_search, null);
+        builder.setView(view);
+
+        final EditText startDateInput = view.findViewById(R.id.startDate);
+        final EditText endDateInput = view.findViewById(R.id.endDate);
+        final EditText minWeightInput = view.findViewById(R.id.minWeight);
+        final EditText maxWeightInput = view.findViewById(R.id.maxWeight);
+
+        builder.setPositiveButton("Search", (dialog, which) -> {
+            String startDate = startDateInput.getText().toString().trim();
+            String endDate = endDateInput.getText().toString().trim();
+            String minWeightStr = minWeightInput.getText().toString().trim();
+            String maxWeightStr = maxWeightInput.getText().toString().trim();
+
+            if (!startDate.isEmpty() && !endDate.isEmpty() && !minWeightStr.isEmpty() && !maxWeightStr.isEmpty()) {
+                try {
+                    double minWeight = Double.parseDouble(minWeightStr);
+                    double maxWeight = Double.parseDouble(maxWeightStr);
+                    List<DatabaseHelper.WeightEntry> results = dbHelper.searchEntries(startDate, endDate, minWeight, maxWeight);
+                    adapter.updateData(results);
+                } catch (NumberFormatException e) {
+                    showToast("Invalid weight range.");
+                }
+            } else {
+                showToast("Please fill all fields.");
+            }
+        });
+
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.show();
+    }
+
+    private void updateChart(List<DatabaseHelper.WeightEntry> weightEntries) {
+        List<Entry> entries = new ArrayList<>();
+        SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy");
+
+        // Ensure we don't process an empty list (prevents crashes)
+        if (weightEntries.isEmpty()) {
+            lineChart.clear();
+            return;
+        }
+
+        for (DatabaseHelper.WeightEntry entry : weightEntries) {
+            try {
+                if (entry.getDate() == null || entry.getDate().isEmpty()) continue;
+
+                // Ensure dates are correctly sorted even in descending order
+                Date date = sdf.parse(entry.getDate());
+                if (date != null) {
+                    entries.add(new Entry((float) date.getTime(), (float) entry.getWeight()));
+                }
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+        }
+
+        // Sort entries to ensure proper rendering (necessary for descending order)
+        entries.sort((e1, e2) -> Float.compare(e1.getX(), e2.getX()));
+
+        if (entries.isEmpty()) {
+            lineChart.clear();
+            return;
+        }
+
+        LineDataSet dataSet = new LineDataSet(entries, "Weight Over Time");
+        dataSet.setColor(Color.CYAN);
+        dataSet.setValueTextColor(Color.BLACK);
+
+        LineData lineData = new LineData(dataSet);
+        lineChart.setData(lineData);
+        lineChart.invalidate();
+
+        // Remove extra labels from top
+        XAxis xAxis = lineChart.getXAxis();
+        xAxis.setValueFormatter(new ValueFormatter() {
+            @Override
+            public String getFormattedValue(float value) {
+                return ""; // Hides X-axis labels
+            }
+        });
+
+        // Add goal weight line if set
+        double goalWeight = dbHelper.getGoalWeight();
+        if (goalWeight > 0) {
+            LimitLine goalLine = new LimitLine((float) goalWeight, "Goal Weight");
+            goalLine.setLineColor(Color.RED);
+            goalLine.setLineWidth(2f);
+            goalLine.setTextColor(Color.BLACK);
+            goalLine.setTextSize(12f);
+            lineChart.getAxisLeft().addLimitLine(goalLine);
+        }
+    }
+
+
     private void showEditDialog(DatabaseHelper.WeightEntry entry) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Edit Entry");
 
-        // Inflate the dialog layout
         View view = getLayoutInflater().inflate(R.layout.dialog_edit_entry, null);
         builder.setView(view);
 

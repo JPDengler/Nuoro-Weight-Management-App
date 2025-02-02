@@ -50,7 +50,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getReadableDatabase();
         String query = "SELECT * FROM " + TABLE_USER_DATA + " WHERE " + COLUMN_USERNAME + " = ?";
         try (Cursor cursor = db.rawQuery(query, new String[]{username})) {
-            return cursor.getCount() > 0; // Username exists
+            return cursor.getCount() > 0;
         }
     }
 
@@ -59,13 +59,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COLUMN_USERNAME, username);
-
-        // Insert and check if successful
         return db.insert(TABLE_USER_DATA, null, values) != -1;
     }
 
-    // Insert a weight entry into the database
+    // Insert a weight entry into the database with validation
     public boolean insertData(String date, double weight) {
+        if (weight < 1 || weight > 500) {
+            Log.e(TAG, "Invalid weight entry: " + weight);
+            return false;
+        }
+
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COLUMN_DATE, date);
@@ -102,7 +105,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         ContentValues values = new ContentValues();
         values.put(COLUMN_GOAL_WEIGHT, goalWeight);
 
-        // Update or insert goal weight
         String query = "SELECT " + COLUMN_ID + " FROM " + TABLE_USER_DATA + " LIMIT 1";
         try (Cursor cursor = db.rawQuery(query, null)) {
             if (cursor.moveToFirst()) {
@@ -118,6 +120,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     // Update a weight entry
     public boolean updateWeight(int id, String newDate, double newWeight) {
+        if (newWeight < 1 || newWeight > 500) {
+            Log.e(TAG, "Invalid weight update attempt: " + newWeight);
+            return false;
+        }
+
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COLUMN_DATE, newDate);
@@ -131,13 +138,54 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return db.delete(TABLE_USER_DATA, COLUMN_ID + " = ?", new String[]{String.valueOf(id)}) > 0;
     }
 
-    // Retrieve all weight entries
-    public List<WeightEntry> getAllData() {
+    // Retrieve all weight entries with sorting options
+    public List<WeightEntry> getAllData(String sortBy) {
         List<WeightEntry> weightEntries = new ArrayList<>();
         String query = "SELECT " + COLUMN_ID + ", " + COLUMN_DATE + ", " + COLUMN_WEIGHT + " FROM " + TABLE_USER_DATA;
 
+        switch (sortBy) {
+            case "date_asc":
+                query += " ORDER BY " + COLUMN_DATE + " ASC";
+                break;
+            case "date_desc":
+                query += " ORDER BY " + COLUMN_DATE + " DESC";
+                break;
+            case "weight_asc":
+                query += " ORDER BY " + COLUMN_WEIGHT + " ASC";
+                break;
+            case "weight_desc":
+                query += " ORDER BY " + COLUMN_WEIGHT + " DESC";
+                break;
+            default:
+                query += " ORDER BY " + COLUMN_DATE + " ASC"; // Default sorting
+        }
+
         SQLiteDatabase db = this.getReadableDatabase();
         try (Cursor cursor = db.rawQuery(query, null)) {
+            if (cursor.moveToFirst()) {
+                do {
+                    int id = cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID));
+                    String date = cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_DATE));
+                    double weight = cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_WEIGHT));
+                    weightEntries.add(new WeightEntry(id, date, weight));
+                } while (cursor.moveToNext());
+            }
+        } catch (SQLException e) {
+            Log.e(TAG, "Error retrieving data: " + e.getMessage());
+        }
+
+        return weightEntries;
+    }
+
+    // Search for weight entries in a date range and weight threshold
+    public List<WeightEntry> searchEntries(String startDate, String endDate, double minWeight, double maxWeight) {
+        List<WeightEntry> weightEntries = new ArrayList<>();
+        String query = "SELECT * FROM " + TABLE_USER_DATA +
+                " WHERE " + COLUMN_DATE + " BETWEEN ? AND ?" +
+                " AND " + COLUMN_WEIGHT + " BETWEEN ? AND ?";
+
+        SQLiteDatabase db = this.getReadableDatabase();
+        try (Cursor cursor = db.rawQuery(query, new String[]{startDate, endDate, String.valueOf(minWeight), String.valueOf(maxWeight)})) {
             if (cursor.moveToFirst()) {
                 do {
                     int id = cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID));
@@ -165,16 +213,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             this.weight = weight;
         }
 
-        public int getId() {
-            return id;
-        }
-
-        public String getDate() {
-            return date;
-        }
-
-        public double getWeight() {
-            return weight;
-        }
+        public int getId() { return id; }
+        public String getDate() { return date; }
+        public double getWeight() { return weight; }
     }
 }
